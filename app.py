@@ -48,8 +48,11 @@ RADAR_URL = "https://api.cloudflare.com/client/v4/radar/http/timeseries"
 
 CLOUDFLARE_TOKEN = os.environ.get("CLOUDFLARE_TOKEN", "")
 POLL_INTERVAL_SEC = float(os.environ.get("POLL_INTERVAL_SEC", "300"))
-MIN_VALUE = float(os.environ.get("MIN_VALUE", "70"))
-MAX_VALUE = float(os.environ.get("MAX_VALUE", "130"))
+# Cloudflare Radar returns values normalized 0 to 1, where 1.0 is the peak
+# observed in the queried window (last 24 hours by default).
+# 0.4 (quiet hour) maps to droplet rate 0; 0.95 (busy hour) maps to 255.
+MIN_VALUE = float(os.environ.get("MIN_VALUE", "0.4"))
+MAX_VALUE = float(os.environ.get("MAX_VALUE", "0.95"))
 SMOOTHING = float(os.environ.get("SMOOTHING", "0.3"))
 
 state = {
@@ -204,8 +207,8 @@ def root():
   <div class="stat">{rate_value}</div>
 </div>
 <div class="row">
-  <div class="label">Cloudflare Radar HTTP traffic (100 = baseline)</div>
-  <div class="stat">{value:.1f}</div>
+  <div class="label">Cloudflare Radar HTTP traffic (1.0 = peak in last 24h)</div>
+  <div class="stat">{value:.2f}</div>
 </div>
 <div class="row">
   <div class="label">Last fetch</div>
