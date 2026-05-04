@@ -142,17 +142,22 @@ def ensure_poll_running():
 # ============ Rate Calculation ============
 
 def compute_rate():
-    """Map current traffic value to 0-255 droplet rate."""
+    """Map current traffic value to 0-255 droplet rate.
+
+    Inverted mapping: HIGHER internet traffic produces FEWER droplets.
+    Quiet internet = fast droplets (rate 255).
+    Busy internet = slow droplets (rate 0).
+    """
     with state["lock"]:
         value = state["last_value"]
 
     if value <= MIN_VALUE:
-        target = 0
+        target = 255  # very quiet = maximum droplet rate
     elif value >= MAX_VALUE:
-        target = 255
+        target = 0    # very busy = no droplets
     else:
         normalized = (value - MIN_VALUE) / (MAX_VALUE - MIN_VALUE)
-        target = int(normalized * 255)
+        target = int((1.0 - normalized) * 255)
 
     with state["lock"]:
         state["smoothed_rate"] = (
