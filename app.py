@@ -50,10 +50,12 @@ CLOUDFLARE_TOKEN = os.environ.get("CLOUDFLARE_TOKEN", "")
 POLL_INTERVAL_SEC = float(os.environ.get("POLL_INTERVAL_SEC", "300"))
 # Cloudflare Radar returns values normalized 0 to 1, where 1.0 is the peak
 # observed in the queried window (last 24 hours by default).
-# 0.4 (quiet hour) maps to droplet rate 0; 0.95 (busy hour) maps to 255.
+# Quiet hour (low value) and busy hour (high value) define the droplet range.
 MIN_VALUE = float(os.environ.get("MIN_VALUE", "0.4"))
 MAX_VALUE = float(os.environ.get("MAX_VALUE", "0.95"))
-SMOOTHING = float(os.environ.get("SMOOTHING", "0.3"))
+# Smoothing applied once per SMOOTHING_TICK_SEC. Lower SMOOTHING = slower transitions.
+SMOOTHING = float(os.environ.get("SMOOTHING", "0.05"))
+SMOOTHING_TICK_SEC = float(os.environ.get("SMOOTHING_TICK_SEC", "1.0"))
 
 state = {
     "lock": threading.Lock(),
@@ -123,48 +125,68 @@ def poll_loop():
 # ============ Lazy Thread Starter ============
 
 _poll_thread = None
-_poll_lock = threading.Lock()
+_smooth_thread = None
+_thread_lock = threading.Lock()
 
 
-def ensure_poll_running():
-    """Start the polling thread in the current process if not already running."""
-    global _poll_thread
-    if _poll_thread is not None and _poll_thread.is_alive():
-        return
-    with _poll_lock:
-        if _poll_thread is not None and _poll_thread.is_alive():
-            return
-        print(f"[startup] spawning radar poll thread in pid={os.getpid()}", flush=True)
-        _poll_thread = threading.Thread(target=poll_loop, daemon=True)
-        _poll_thread.start()
+def ensure_threads_running():
+    """Start the polling and smoothing threads if not already running."""
+    global _poll_thread, _smooth_thread
+    with _thread_lock:
+        if _poll_thread is None or not _poll_thread.is_alive():
+            print(f"[startup] spawning radar poll thread in pid={os.getpid()}", flush=True)
+            _poll_thread = threading.Thread(target=poll_loop, daemon=True)
+            _poll_thread.start()
+        if _smooth_thread is None or not _smooth_thread.is_alive():
+            print(f"[startup] spawning smoothing thread in pid={os.getpid()}", flush=True)
+            _smooth_thread = threading.Thread(target=smoothing_loop, daemon=True)
+            _smooth_thread.start()
 
 
 # ============ Rate Calculation ============
 
-def compute_rate():
-    """Map current traffic value to 0-255 droplet rate.
+def compute_target_rate(value):
+    """Map traffic value to target droplet rate.
 
     Inverted mapping: HIGHER internet traffic produces FEWER droplets.
     Quiet internet = fast droplets (rate 255).
-    Busy internet = slow droplets (rate 0).
+    Busy internet = slow droplets (rate 1, minimum so piece never fully stops).
     """
-    with state["lock"]:
-        value = state["last_value"]
-
     if value <= MIN_VALUE:
-        target = 255  # very quiet = maximum droplet rate
+        return 255
     elif value >= MAX_VALUE:
-        target = 0    # very busy = no droplets
+        return 1
     else:
         normalized = (value - MIN_VALUE) / (MAX_VALUE - MIN_VALUE)
-        target = int((1.0 - normalized) * 255)
+        # Linear from 255 down to 1
+        return int(255 - normalized * 254)
 
+
+def smoothing_loop():
+    """Background thread. Updates smoothed_rate at fixed interval.
+
+    Decoupled from HTTP requests so refresh rate does not affect smoothing.
+    """
+    print("[smoothing] thread starting", flush=True)
+    while True:
+        with state["lock"]:
+            value = state["last_value"]
+            current = state["smoothed_rate"]
+
+        target = compute_target_rate(value)
+        new_smoothed = SMOOTHING * target + (1 - SMOOTHING) * current
+
+        with state["lock"]:
+            state["smoothed_rate"] = new_smoothed
+
+        time.sleep(SMOOTHING_TICK_SEC)
+
+
+def compute_rate():
+    """Read current smoothed rate. Does NOT update state."""
     with state["lock"]:
-        state["smoothed_rate"] = (
-            SMOOTHING * target + (1 - SMOOTHING) * state["smoothed_rate"]
-        )
         smoothed = state["smoothed_rate"]
-
+        value = state["last_value"]
     return int(smoothed), value
 
 
@@ -175,7 +197,7 @@ app = Flask(__name__)
 
 @app.before_request
 def _before_request():
-    ensure_poll_running()
+    ensure_threads_running()
 
 
 @app.route("/")
