@@ -97,8 +97,12 @@ def on_error(ws, error):
 
 def firehose_loop():
     """Background thread. Maintains WebSocket connection, reconnects on failure."""
+    print("[firehose] thread starting", flush=True)
+    attempt = 0
     while True:
+        attempt += 1
         try:
+            print(f"[firehose] attempt #{attempt}: connecting to {JETSTREAM_URL}", flush=True)
             ws = websocket.WebSocketApp(
                 JETSTREAM_URL,
                 on_open=on_open,
@@ -107,12 +111,14 @@ def firehose_loop():
                 on_close=on_close,
             )
             ws.run_forever(ping_interval=30, ping_timeout=10)
+            print(f"[firehose] run_forever returned (attempt #{attempt})", flush=True)
         except Exception as e:
-            print(f"[firehose] reconnect after error: {e}", flush=True)
+            print(f"[firehose] exception on attempt #{attempt}: {type(e).__name__}: {e}", flush=True)
         time.sleep(2)
 
 
 # Start firehose thread on module import (so gunicorn picks it up)
+print("[startup] spawning firehose thread", flush=True)
 threading.Thread(target=firehose_loop, daemon=True).start()
 
 
