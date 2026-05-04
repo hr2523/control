@@ -183,11 +183,15 @@ def smoothing_loop():
 
 
 def compute_rate():
-    """Read current smoothed rate. Does NOT update state."""
+    """Read current smoothed rate. Does NOT update state.
+
+    Use round() not int() so the smoothed value can asymptotically
+    approach the target without truncating to 0 at the boundary.
+    """
     with state["lock"]:
         smoothed = state["smoothed_rate"]
         value = state["last_value"]
-    return int(smoothed), value
+    return int(round(smoothed)), value
 
 
 # ============ Flask App ============
