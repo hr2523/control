@@ -33,6 +33,7 @@ import os
 import time
 import threading
 import json
+import encodings.idna  # noqa: F401  force-load to avoid threaded LookupError on Render
 from collections import deque
 
 from flask import Flask, jsonify
