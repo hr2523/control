@@ -220,6 +220,7 @@ def root():
 
     html = f"""<!DOCTYPE html>
 <html><head><title>Water Hourglass: Rate Service</title>
+<meta http-equiv="refresh" content="5">
 <style>
   body {{ font-family: -apple-system, sans-serif; max-width: 640px; margin: 40px auto; padding: 20px; }}
   h1 {{ color: #246; }}
