@@ -150,16 +150,17 @@ def compute_target_rate(value):
 
     Inverted mapping: HIGHER internet traffic produces FEWER droplets.
     Quiet internet (<= MIN_VALUE) = fast droplets (rate 255).
-    Busy internet  (>= MAX_VALUE) = piece fully stops (rate 0).
+    Busy internet  (>= MAX_VALUE) = slowest possible drip (rate 1, one drop per 5 sec).
+    Floor is 1 (not 0) so the piece always drips, just very slowly at peak traffic.
     """
     if value <= MIN_VALUE:
         return 255
     elif value >= MAX_VALUE:
-        return 0
+        return 1
     else:
         normalized = (value - MIN_VALUE) / (MAX_VALUE - MIN_VALUE)
-        # Linear from 255 down to 0
-        return int(255 - normalized * 255)
+        # Linear from 255 down to 1
+        return int(255 - normalized * 254)
 
 
 def smoothing_loop():
