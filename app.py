@@ -23,11 +23,11 @@ Required environment variable:
 Optional environment variables:
   PORT               port to listen on (Render sets this)
   POLL_INTERVAL_SEC  how often to fetch from Radar (default 300, every 5 min)
-  MIN_VALUE          normalized traffic value mapped to droplet rate 0
-                     (default 70, meaning "30% below baseline")
-  MAX_VALUE          normalized traffic value mapped to droplet rate 255
-                     (default 130, meaning "30% above baseline")
-  SMOOTHING          exponential smoothing factor 0 to 1 (default 0.3)
+  MIN_VALUE          normalized traffic value (<=) mapped to droplet rate 255
+                     (default 0.5, "quiet" end of inverted mapping)
+  MAX_VALUE          normalized traffic value (>=) mapped to droplet rate 0
+                     (default 0.95, busy end; piece fully stops here)
+  SMOOTHING          exponential smoothing factor 0 to 1 (default 0.05)
 
 Local run:
   pip install -r requirements.txt
@@ -51,7 +51,7 @@ POLL_INTERVAL_SEC = float(os.environ.get("POLL_INTERVAL_SEC", "300"))
 # Cloudflare Radar returns values normalized 0 to 1, where 1.0 is the peak
 # observed in the queried window (last 24 hours by default).
 # Quiet hour (low value) and busy hour (high value) define the droplet range.
-MIN_VALUE = float(os.environ.get("MIN_VALUE", "0.4"))
+MIN_VALUE = float(os.environ.get("MIN_VALUE", "0.5"))
 MAX_VALUE = float(os.environ.get("MAX_VALUE", "0.95"))
 # Smoothing applied once per SMOOTHING_TICK_SEC. Lower SMOOTHING = slower transitions.
 SMOOTHING = float(os.environ.get("SMOOTHING", "0.05"))
@@ -149,17 +149,17 @@ def compute_target_rate(value):
     """Map traffic value to target droplet rate.
 
     Inverted mapping: HIGHER internet traffic produces FEWER droplets.
-    Quiet internet = fast droplets (rate 255).
-    Busy internet = slow droplets (rate 1, minimum so piece never fully stops).
+    Quiet internet (<= MIN_VALUE) = fast droplets (rate 255).
+    Busy internet  (>= MAX_VALUE) = piece fully stops (rate 0).
     """
     if value <= MIN_VALUE:
         return 255
     elif value >= MAX_VALUE:
-        return 1
+        return 0
     else:
         normalized = (value - MIN_VALUE) / (MAX_VALUE - MIN_VALUE)
-        # Linear from 255 down to 1
-        return int(255 - normalized * 254)
+        # Linear from 255 down to 0
+        return int(255 - normalized * 255)
 
 
 def smoothing_loop():
