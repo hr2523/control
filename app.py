@@ -250,8 +250,6 @@ def root():
   <div>{uptime}s / {fetch_count} / {fetch_errors}</div>
 </div>
 {f'<div class="err">{last_error}</div>' if last_error else ''}
-<hr>
-<p>Endpoints: <code>/rate</code> (plain text rate for Arduino), <code>/status</code> (JSON), <code>/health</code></p>
 </body></html>"""
     return html
 
